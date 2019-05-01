@@ -1,34 +1,48 @@
 #Default config
 $date = Get-Date -UFormat "%Y_%m_%d_%A"
-$file = "D:\Backup_" + $date + ".bak"
-$blob = "Backup_" + $date + ".bak"
-#Change to yours
+$file = "D:\Prod" + $date + ".bak"
+$blob = "Prod_" + $date + ".bak"
 $groupName = "Backups"
 $container = "sqlbackups"
+$text = ""
+
 #Setup Azure
 $storageAccount = Get-AzStorageAccount -ResourceGroupName $groupName
 $ctx = $storageAccount.Context
-echo "Azure Started"
+Write-Output "Azure Started"
 
 #Start Sql Backup
-Backup-SqlDatabase -ServerInstance "." -Database "your_database" -BackupFile $file
-echo "Backup Finished"
-if ([System.IO.File]::Exists($file))  {
-    echo "sending to Azure"
-    set-AzStorageblobcontent -File $file -Container $container -Blob $blob -Context $ctx
+Try
+{
+Backup-SqlDatabase -ServerInstance "." -Database "Prod" -BackupFile $file
+Write-Output "Backup Finished"
+	if ([System.IO.File]::Exists($file))  {
+		Write-Output "sending to Azure"
+		set-AzStorageblobcontent -File $file -Container $container -Blob $blob -Context $ctx
+	}
 }
-#Remove Connection
-Remove-Item $file -Force
+Catch
+{
+    $text= "File was not uploaded to Azure! $file"	
+}
+
+#Remove File
+if ([System.IO.File]::Exists($file))  {
+	Remove-Item $file 
+}
 
 #Start Slack Config
+if (!$text.length -gt 0){
+	$text= "SAP SQL Server - Daily Backup Finished. >> *$blob Saved on Azure Blob Storage*"
+}
 $payload = @{
 	"channel" = "#it"
 	"icon_emoji" = ":bomb:"
-	"text" = "SAP SQL Server - Daily Backup Finished. >> *$blob Saved on Azure Blob Storage*"
+	"text" = $text
 	"username" = "IT Routines"
 }
-#Send Message To Slack Channel
+Send Message To Slack Channel
 Invoke-WebRequest `
 	-Body (ConvertTo-Json -Compress -InputObject $payload) `
 	-Method Post `
-	-Uri "webhook to slack" | Out-Null
+	-Uri "your_web_hook" | Out-Null
